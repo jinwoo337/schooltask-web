@@ -35,9 +35,11 @@ const getWeekday = (deadlineStr) => {
 };
 
 function App() {
+  const [pageTab, setPageTab] = useState('home'); // 'home' or 'overview'
   const [activeTab, setActiveTab] = useState('active');
   const [activeCategory, setActiveCategory] = useState('assignment');
   const [subjects, setSubjects] = useState([]);
+  const [selectedSubject, setSelectedSubject] = useState('');
   const [data, setData] = useState({});
   const [newSubject, setNewSubject] = useState('');
   const [newTeacher, setNewTeacher] = useState('');
@@ -50,6 +52,11 @@ function App() {
   const [sortBy, setSortBy] = useState('deadline');
   const [editingItem, setEditingItem] = useState(null);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [overviewModalVisible, setOverviewModalVisible] = useState(false);
+  const [subjectModalVisible, setSubjectModalVisible] = useState(false);
+  const [editingSubject, setEditingSubject] = useState('');
+  const [newSubjectEditName, setNewSubjectEditName] = useState('');
 
   useEffect(() => {
     loadData();
@@ -65,7 +72,11 @@ function App() {
       if (savedData) {
         const parsedData = JSON.parse(savedData);
         setData(parsedData);
-        setSubjects(Object.keys(parsedData));
+        const subjectKeys = Object.keys(parsedData);
+        setSubjects(subjectKeys);
+        if (subjectKeys.length > 0) {
+          setSelectedSubject(subjectKeys[0]);
+        }
       }
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -80,20 +91,37 @@ function App() {
     }
   };
 
-  const addItem = () => {
-    if (!newSubject || ((activeCategory === 'assignment') && (!newTitle || !newDeadline)) || (activeCategory === 'study' && !newContent)) {
+  const addSubject = () => {
+    if (!newSubject.trim()) {
+      return;
+    }
+    if (subjects.includes(newSubject)) {
+      alert('이미 존재하는 과목입니다.');
       return;
     }
 
     const newData = { ...data };
-    if (!newData[newSubject]) {
-      newData[newSubject] = { assignments: [], studies: [] };
-      setSubjects([...subjects, newSubject]);
+    newData[newSubject] = { assignments: [], studies: [] };
+    setData(newData);
+    const newSubjects = [...subjects, newSubject];
+    setSubjects(newSubjects);
+    setSelectedSubject(newSubject);
+    setNewSubject('');
+  };
+
+  const addItem = () => {
+    if (!selectedSubject || ((activeCategory === 'assignment') && (!newTitle || !newDeadline)) || (activeCategory === 'study' && !newContent)) {
+      return;
+    }
+
+    const newData = { ...data };
+    if (!newData[selectedSubject]) {
+      newData[selectedSubject] = { assignments: [], studies: [] };
     }
 
     const newId = Date.now();
     if (activeCategory === 'assignment') {
-      newData[newSubject].assignments.push({
+      newData[selectedSubject].assignments.push({
         id: newId,
         teacher: newTeacher,
         title: newTitle,
@@ -103,7 +131,7 @@ function App() {
         isCompleted: false,
       });
     } else {
-      newData[newSubject].studies.push({
+      newData[selectedSubject].studies.push({
         id: newId,
         teacher: newTeacher,
         content: newContent,
@@ -115,7 +143,6 @@ function App() {
     }
 
     setData(newData);
-    setNewSubject('');
     setNewTeacher('');
     setNewTitle('');
     setNewContent('');
@@ -196,6 +223,51 @@ function App() {
     return results.sort((a, b) => b.score - a.score);
   };
 
+  const openSubjectModal = (subject) => {
+    setEditingSubject(subject);
+    setNewSubjectEditName(subject);
+    setSubjectModalVisible(true);
+  };
+
+  const renameSubject = () => {
+    if (!newSubjectEditName.trim() || newSubjectEditName === editingSubject) {
+      setSubjectModalVisible(false);
+      return;
+    }
+
+    const newSubjects = subjects.map(s => (s === editingSubject ? newSubjectEditName : s));
+    setSubjects(newSubjects);
+
+    const newData = { ...data };
+    newData[newSubjectEditName] = newData[editingSubject];
+    delete newData[editingSubject];
+    setData(newData);
+
+    if (selectedSubject === editingSubject) {
+      setSelectedSubject(newSubjectEditName);
+    }
+
+    setSubjectModalVisible(false);
+    setEditingSubject('');
+    setNewSubjectEditName('');
+  };
+
+  const deleteSubject = () => {
+    const newSubjects = subjects.filter(s => s !== editingSubject);
+    setSubjects(newSubjects);
+    const newData = { ...data };
+    delete newData[editingSubject];
+    setData(newData);
+
+    if (selectedSubject === editingSubject) {
+      setSelectedSubject(newSubjects[0] || '');
+    }
+
+    setSubjectModalVisible(false);
+    setEditingSubject('');
+    setNewSubjectEditName('');
+  };
+
   const toggleFavorite = (subject, itemId, isAssignment) => {
     const newData = { ...data };
     const items = isAssignment
@@ -220,6 +292,21 @@ function App() {
     setData(newData);
   };
 
+  const deleteItem = (subject, itemId, isAssignment) => {
+    if (window.confirm('정말 이 항목을 삭제하시겠습니까?')) {
+      const newData = { ...data };
+      const items = isAssignment
+        ? newData[subject].assignments
+        : newData[subject].studies;
+      if (isAssignment) {
+        newData[subject].assignments = items.filter(i => i.id !== itemId);
+      } else {
+        newData[subject].studies = items.filter(i => i.id !== itemId);
+      }
+      setData(newData);
+    }
+  };
+
   const updateItem = (subject, updatedItem, isAssignment) => {
     const newData = { ...data };
     const items = isAssignment
@@ -239,34 +326,42 @@ function App() {
     setEditModalVisible(true);
   };
 
-  const renderItems = () => {
+  const openOverviewModal = (type, subject, item) => {
+    setSelectedItem({ type, subject, data: item });
+    setOverviewModalVisible(true);
+  };
+
+  const renderHomeItems = () => {
     let itemsToDisplay = [];
+
+    if (!selectedSubject) return itemsToDisplay;
 
     if (searchActive && searchQuery.trim()) {
       const results = getSearchResults();
-      itemsToDisplay = results.map(r => ({
-        type: r.type,
-        subject: r.subject,
-        data: r.data,
-      }));
+      itemsToDisplay = results
+        .filter(r => r.subject === selectedSubject)
+        .map(r => ({
+          type: r.type,
+          subject: r.subject,
+          data: r.data,
+        }));
     } else {
-      Object.entries(data).forEach(([subject, subjectData]) => {
-        const items = activeCategory === 'assignment'
-          ? subjectData.assignments || []
-          : subjectData.studies || [];
+      const subjectData = data[selectedSubject] || { assignments: [], studies: [] };
+      const items = activeCategory === 'assignment'
+        ? subjectData.assignments || []
+        : subjectData.studies || [];
 
-        const filtered = items.filter(item =>
-          activeTab === 'active' ? !item.isCompleted : item.isCompleted
-        );
+      const filtered = items.filter(item =>
+        activeTab === 'active' ? !item.isCompleted : item.isCompleted
+      );
 
-        const sorted = getSortedItems(filtered);
+      const sorted = getSortedItems(filtered);
 
-        sorted.forEach(item => {
-          itemsToDisplay.push({
-            type: activeCategory,
-            subject,
-            data: item,
-          });
+      sorted.forEach(item => {
+        itemsToDisplay.push({
+          type: activeCategory,
+          subject: selectedSubject,
+          data: item,
         });
       });
     }
@@ -274,7 +369,13 @@ function App() {
     return itemsToDisplay;
   };
 
-  const items = renderItems();
+  const renderOverviewGrid = () => {
+    const rows = [];
+    for (let i = 0; i < subjects.length; i += 2) {
+      rows.push(subjects.slice(i, i + 2));
+    }
+    return rows;
+  };
 
   return (
     <div className="app-container">
@@ -283,217 +384,384 @@ function App() {
         <h1>📋 SchoolTask</h1>
       </div>
 
-      {/* Form Section */}
-      <div className="form-section">
-        <div className="category-tabs">
-          <button
-            className={`tab-button ${activeCategory === 'assignment' ? 'active' : ''}`}
-            onClick={() => setActiveCategory('assignment')}
-          >
-            과제
-          </button>
-          <button
-            className={`tab-button ${activeCategory === 'study' ? 'active' : ''}`}
-            onClick={() => setActiveCategory('study')}
-          >
-            해야할 공부
-          </button>
+      {/* Subject Selection Bar */}
+      <div className="subject-bar">
+        <div className="subject-buttons">
+          {subjects.map(subject => (
+            <button
+              key={subject}
+              className={`subject-button ${selectedSubject === subject ? 'active' : ''}`}
+              onClick={() => setSelectedSubject(subject)}
+            >
+              {subject}
+            </button>
+          ))}
         </div>
-
-        <div className="input-group">
-          <input
-            type="text"
-            placeholder="과목"
-            value={newSubject}
-            onChange={(e) => setNewSubject(e.target.value)}
-            className="input-field"
-          />
-          <input
-            type="text"
-            placeholder="선생님"
-            value={newTeacher}
-            onChange={(e) => setNewTeacher(e.target.value)}
-            className="input-field"
-          />
-          {activeCategory === 'assignment' ? (
-            <>
-              <input
-                type="text"
-                placeholder="과제명"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                className="input-field"
-              />
-              <input
-                type="text"
-                placeholder="제출기한 (M/D)"
-                value={newDeadline}
-                onChange={(e) => setNewDeadline(e.target.value)}
-                className="input-field"
-              />
-            </>
-          ) : (
-            <>
-              <input
-                type="text"
-                placeholder="공부 내용"
-                value={newContent}
-                onChange={(e) => setNewContent(e.target.value)}
-                className="input-field"
-              />
-              <input
-                type="text"
-                placeholder="기한 (M/D)"
-                value={newDeadline}
-                onChange={(e) => setNewDeadline(e.target.value)}
-                className="input-field"
-              />
-            </>
-          )}
-          <textarea
-            placeholder="자세한 내용 (선택)"
-            value={newDetails}
-            onChange={(e) => setNewDetails(e.target.value)}
-            className="textarea-field"
-            rows="2"
-          />
-        </div>
-
-        <button onClick={addItem} className="add-button">
-          + 추가
+        <button
+          className="add-subject-button"
+          onClick={() => {
+            const name = prompt('과목명을 입력하세요');
+            if (name && name.trim()) {
+              setNewSubject(name.trim());
+              addSubject();
+            }
+          }}
+        >
+          +
         </button>
       </div>
 
-      {/* Tabs Section */}
-      <div className="tabs-section">
-        <div className="tab-buttons">
-          <button
-            className={`tab-button ${activeTab === 'active' ? 'active' : ''}`}
-            onClick={() => setActiveTab('active')}
-          >
-            해야할 것
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'completed' ? 'active' : ''}`}
-            onClick={() => setActiveTab('completed')}
-          >
-            완료된 것
-          </button>
-        </div>
-
-        <div className="search-section">
-          <button
-            className="search-button"
-            onClick={() => setSearchActive(!searchActive)}
-          >
-            🔍 검색
-          </button>
-          {searchActive && (
-            <input
-              type="text"
-              placeholder="검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="search-input"
-            />
-          )}
-        </div>
+      {/* Page Tabs Navigation */}
+      <div className="page-tabs">
+        <button
+          className={`page-tab-button ${pageTab === 'home' ? 'active' : ''}`}
+          onClick={() => setPageTab('home')}
+        >
+          Home
+        </button>
+        <button
+          className={`page-tab-button ${pageTab === 'overview' ? 'active' : ''}`}
+          onClick={() => setPageTab('overview')}
+        >
+          전체 보기
+        </button>
       </div>
 
-      {/* Sort Section */}
-      {(activeCategory === 'assignment' || (activeCategory === 'study' && !searchActive)) && (
-        <div className="sort-section">
-          {activeCategory === 'assignment' ? (
-            <>
+      {/* Home Tab */}
+      {pageTab === 'home' && (
+        <>
+          {/* Form Section */}
+          <div className="form-section">
+            <div className="category-tabs">
               <button
-                className={`sort-button ${sortBy === 'deadline' ? 'active' : ''}`}
-                onClick={() => setSortBy('deadline')}
+                className={`tab-button ${activeCategory === 'assignment' ? 'active' : ''}`}
+                onClick={() => setActiveCategory('assignment')}
               >
-                제출기한
+                과제
               </button>
               <button
-                className={`sort-button ${sortBy === 'teacher' ? 'active' : ''}`}
-                onClick={() => setSortBy('teacher')}
+                className={`tab-button ${activeCategory === 'study' ? 'active' : ''}`}
+                onClick={() => setActiveCategory('study')}
               >
-                선생님
+                해야할 공부
+              </button>
+            </div>
+
+            <div className="input-group">
+              <input
+                type="text"
+                placeholder="선생님"
+                value={newTeacher}
+                onChange={(e) => setNewTeacher(e.target.value)}
+                className="input-field"
+              />
+              {activeCategory === 'assignment' ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="과제명"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    className="input-field"
+                  />
+                  <input
+                    type="text"
+                    placeholder="제출기한 (M/D)"
+                    value={newDeadline}
+                    onChange={(e) => setNewDeadline(e.target.value)}
+                    className="input-field"
+                  />
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="공부 내용"
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    className="input-field"
+                  />
+                  <input
+                    type="text"
+                    placeholder="기한 (M/D)"
+                    value={newDeadline}
+                    onChange={(e) => setNewDeadline(e.target.value)}
+                    className="input-field"
+                  />
+                </>
+              )}
+              <textarea
+                placeholder="자세한 내용 (선택)"
+                value={newDetails}
+                onChange={(e) => setNewDetails(e.target.value)}
+                className="textarea-field"
+                rows="2"
+              />
+            </div>
+
+            <button onClick={addItem} className="add-button">
+              + 추가
+            </button>
+          </div>
+
+          {/* Tabs Section */}
+          <div className="tabs-section">
+            <div className="tab-buttons">
+              <button
+                className={`tab-button ${activeTab === 'active' ? 'active' : ''}`}
+                onClick={() => setActiveTab('active')}
+              >
+                해야할 것
               </button>
               <button
-                className={`sort-button ${sortBy === 'name' ? 'active' : ''}`}
-                onClick={() => setSortBy('name')}
+                className={`tab-button ${activeTab === 'completed' ? 'active' : ''}`}
+                onClick={() => setActiveTab('completed')}
               >
-                과제명
+                완료된 것
               </button>
-            </>
-          ) : (
-            <>
+            </div>
+
+            <div className="search-section">
               <button
-                className={`sort-button ${sortBy === 'teacher' ? 'active' : ''}`}
-                onClick={() => setSortBy('teacher')}
+                className="search-button"
+                onClick={() => setSearchActive(!searchActive)}
               >
-                선생님
+                🔍 검색
               </button>
-              <button
-                className={`sort-button ${sortBy === 'name' ? 'active' : ''}`}
-                onClick={() => setSortBy('name')}
-              >
-                공부 이름
-              </button>
-            </>
+              {searchActive && (
+                <input
+                  type="text"
+                  placeholder="검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="search-input"
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Sort Section */}
+          {(activeCategory === 'assignment' || (activeCategory === 'study' && !searchActive)) && (
+            <div className="sort-section">
+              {activeCategory === 'assignment' ? (
+                <>
+                  <button
+                    className={`sort-button ${sortBy === 'deadline' ? 'active' : ''}`}
+                    onClick={() => setSortBy('deadline')}
+                  >
+                    제출기한
+                  </button>
+                  <button
+                    className={`sort-button ${sortBy === 'teacher' ? 'active' : ''}`}
+                    onClick={() => setSortBy('teacher')}
+                  >
+                    선생님
+                  </button>
+                  <button
+                    className={`sort-button ${sortBy === 'name' ? 'active' : ''}`}
+                    onClick={() => setSortBy('name')}
+                  >
+                    과제명
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`sort-button ${sortBy === 'teacher' ? 'active' : ''}`}
+                    onClick={() => setSortBy('teacher')}
+                  >
+                    선생님
+                  </button>
+                  <button
+                    className={`sort-button ${sortBy === 'name' ? 'active' : ''}`}
+                    onClick={() => setSortBy('name')}
+                  >
+                    공부 이름
+                  </button>
+                </>
+              )}
+            </div>
           )}
+
+          {/* Items Section */}
+          <div className="items-section">
+            {renderHomeItems().length === 0 ? (
+              <div className="empty-message">
+                {searchActive ? '검색 결과가 없습니다.' : '항목이 없습니다.'}
+              </div>
+            ) : (
+              renderHomeItems().map((item) => (
+                <div
+                  key={`${item.subject}-${item.data.id}`}
+                  className={`item-card ${isUrgent(item.data.deadline || '') ? 'urgent' : ''}`}
+                >
+                  <div className="item-content">
+                    <div className="item-info">
+                      <div className="item-meta">
+                        {item.data.teacher} · {item.data.deadline} {getWeekday(item.data.deadline || '') && `${getWeekday(item.data.deadline)}`}
+                      </div>
+                      <div className="item-title-row">
+                        <div className="item-title">
+                          {item.data.title || item.data.content}
+                        </div>
+                        {item.data.details && (
+                          <>
+                            <div className="divider-vertical" />
+                            <div className="item-details">
+                              {item.data.details}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="item-actions">
+                    {activeTab === 'active' && (
+                      <button
+                        className={`action-button star-button ${item.data.isFavorite ? 'active' : ''}`}
+                        onClick={() => toggleFavorite(item.subject, item.data.id, item.type === 'assignment')}
+                      >
+                        {item.data.isFavorite ? '★' : '☆'}
+                      </button>
+                    )}
+                    <button
+                      className="action-button edit-button"
+                      onClick={() => openEditModal(item.data, item.type === 'assignment', item.subject)}
+                    >
+                      수정
+                    </button>
+                    <button
+                      className={`action-button complete-button ${item.data.isCompleted ? 'completed' : ''}`}
+                      onClick={() => toggleComplete(item.subject, item.data.id, item.type === 'assignment')}
+                    >
+                      {activeTab === 'active' ? '완료' : '복구'}
+                    </button>
+                    <button
+                      className="action-button delete-button"
+                      onClick={() => deleteItem(item.subject, item.data.id, item.type === 'assignment')}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                  <div className="subject-tag">{item.subject}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Overview Tab */}
+      {pageTab === 'overview' && (
+        <div className="overview-container">
+          <div className="grid-container">
+            {renderOverviewGrid().map((row, rowIndex) => (
+              <div key={rowIndex} className="grid-row">
+                {row.map(subject => {
+                  const subjectData = data[subject] || { assignments: [], studies: [] };
+                  return (
+                    <div key={subject} className="grid-card">
+                      <div className="card-header">
+                        <h3 className="card-subject-name">{subject}</h3>
+                      </div>
+
+                      {/* Assignments Section */}
+                      <div className="card-section">
+                        <div className="section-title">과제</div>
+                        {subjectData.assignments.filter(a => !a.isCompleted).length > 0 ? (
+                          subjectData.assignments.filter(a => !a.isCompleted).map(assignment => (
+                            <div
+                              key={assignment.id}
+                              className={`card-item ${isUrgent(assignment.deadline) ? 'urgent' : ''}`}
+                            >
+                              <button
+                                className="card-item-button"
+                                onClick={() => openOverviewModal('assignment', subject, assignment)}
+                              >
+                                <span className="item-bullet">•</span>
+                                <span className="item-name">{assignment.title}</span>
+                                {assignment.isFavorite && <span className="item-favorite">★</span>}
+                              </button>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="empty-section">-</div>
+                        )}
+                      </div>
+
+                      {/* Divider */}
+                      <div className="card-divider" />
+
+                      {/* Studies Section */}
+                      <div className="card-section">
+                        <div className="section-title">공부</div>
+                        {subjectData.studies.filter(s => !s.isCompleted).length > 0 ? (
+                          subjectData.studies.filter(s => !s.isCompleted).map(study => (
+                            <button
+                              key={study.id}
+                              className="card-item-button"
+                              onClick={() => openOverviewModal('study', subject, study)}
+                            >
+                              <span className="item-bullet">•</span>
+                              <span className="item-name">{study.content}</span>
+                              {study.isFavorite && <span className="item-favorite">★</span>}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="empty-section">-</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {row.length === 1 && <div className="grid-empty-card" />}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Items Section */}
-      <div className="items-section">
-        {items.length === 0 ? (
-          <div className="empty-message">
-            {searchActive ? '검색 결과가 없습니다.' : '항목이 없습니다.'}
-          </div>
-        ) : (
-          items.map((item) => (
-            <div
-              key={`${item.subject}-${item.data.id}`}
-              className={`item-card ${isUrgent(item.data.deadline || '') ? 'urgent' : ''}`}
-            >
-              <div className="item-header">
-                <div className="item-info">
-                  <div className="item-title">
-                    {item.type === 'assignment' ? item.data.title : item.data.content}
-                  </div>
-                  <div className="item-meta">
-                    {item.data.teacher} · {item.data.deadline} {getWeekday(item.data.deadline || '') && `${getWeekday(item.data.deadline)}`}
-                  </div>
-                  {item.data.details && (
-                    <div className="item-details">{item.data.details}</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="item-actions">
-                <button
-                  className="action-button edit-button"
-                  onClick={() => openEditModal(item.data, item.type === 'assignment', item.subject)}
-                >
-                  수정
-                </button>
-                <button
-                  className={`action-button star-button ${item.data.isFavorite ? 'active' : ''}`}
-                  onClick={() => toggleFavorite(item.subject, item.data.id, item.type === 'assignment')}
-                >
-                  {item.data.isFavorite ? '★' : '☆'}
-                </button>
-                <button
-                  className={`action-button complete-button ${item.data.isCompleted ? 'completed' : ''}`}
-                  onClick={() => toggleComplete(item.subject, item.data.id, item.type === 'assignment')}
-                >
-                  ✓
-                </button>
-              </div>
-              <div className="subject-tag">{item.subject}</div>
+      {/* Subject Edit Modal */}
+      {subjectModalVisible && (
+        <div className="modal-overlay">
+          <div className="modal-content subject-modal">
+            <h2>과목 편집</h2>
+            <div className="form-field">
+              <input
+                type="text"
+                value={newSubjectEditName}
+                onChange={(e) => setNewSubjectEditName(e.target.value)}
+                className="edit-input"
+              />
             </div>
-          ))
-        )}
-      </div>
+            <div className="modal-buttons subject-modal-buttons">
+              <button
+                className="delete-button"
+                onClick={deleteSubject}
+              >
+                삭제
+              </button>
+              <button
+                className="cancel-button"
+                onClick={() => {
+                  setSubjectModalVisible(false);
+                  setEditingSubject('');
+                  setNewSubjectEditName('');
+                }}
+              >
+                취소
+              </button>
+              <button
+                className="save-button"
+                onClick={renameSubject}
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editModalVisible && editingItem && (
@@ -510,6 +778,52 @@ function App() {
                 setEditingItem(null);
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Overview Modal */}
+      {overviewModalVisible && selectedItem && (
+        <div className="modal-overlay">
+          <div className="modal-content overview-modal">
+            <h2>{selectedItem.subject} {selectedItem.type === 'assignment' ? '과제' : '공부'}</h2>
+            {selectedItem.type === 'assignment' ? (
+              <>
+                <div className="detail-row">
+                  <span className="detail-label">과제명:</span>
+                  <span className="detail-value">{selectedItem.data.title}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">선생님:</span>
+                  <span className="detail-value">{selectedItem.data.teacher}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">제출기한:</span>
+                  <span className="detail-value">{selectedItem.data.deadline}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="detail-row">
+                  <span className="detail-label">선생님:</span>
+                  <span className="detail-value">{selectedItem.data.teacher}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">내용:</span>
+                  <span className="detail-value">{selectedItem.data.content}</span>
+                </div>
+                <div className="detail-row">
+                  <span className="detail-label">기한:</span>
+                  <span className="detail-value">{selectedItem.data.deadline}</span>
+                </div>
+              </>
+            )}
+            <button
+              className="close-button"
+              onClick={() => setOverviewModalVisible(false)}
+            >
+              닫기
+            </button>
           </div>
         </div>
       )}
