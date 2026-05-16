@@ -38,9 +38,15 @@ function App() {
   const [pageTab, setPageTab] = useState('home'); // 'home' or 'overview'
   const [activeTab, setActiveTab] = useState('active');
   const [activeCategory, setActiveCategory] = useState('assignment');
-  const [subjects, setSubjects] = useState([]);
-  const [selectedSubject, setSelectedSubject] = useState('');
-  const [data, setData] = useState({});
+  const [subjects, setSubjects] = useState(['수학', '영어', '과학', '역사', '국어']);
+  const [selectedSubject, setSelectedSubject] = useState('수학');
+  const [data, setData] = useState({
+    수학: { assignments: [], studies: [] },
+    영어: { assignments: [], studies: [] },
+    과학: { assignments: [], studies: [] },
+    역사: { assignments: [], studies: [] },
+    국어: { assignments: [], studies: [] },
+  });
   const [newSubject, setNewSubject] = useState('');
   const [newTeacher, setNewTeacher] = useState('');
   const [newTitle, setNewTitle] = useState('');
@@ -91,21 +97,22 @@ function App() {
     }
   };
 
-  const addSubject = () => {
-    if (!newSubject.trim()) {
+  const addSubject = (subjectName) => {
+    const name = subjectName || newSubject;
+    if (!name.trim()) {
       return;
     }
-    if (subjects.includes(newSubject)) {
+    if (subjects.includes(name)) {
       alert('이미 존재하는 과목입니다.');
       return;
     }
 
     const newData = { ...data };
-    newData[newSubject] = { assignments: [], studies: [] };
+    newData[name] = { assignments: [], studies: [] };
     setData(newData);
-    const newSubjects = [...subjects, newSubject];
+    const newSubjects = [...subjects, name];
     setSubjects(newSubjects);
-    setSelectedSubject(newSubject);
+    setSelectedSubject(name);
     setNewSubject('');
   };
 
@@ -396,8 +403,7 @@ function App() {
           onClick={() => {
             const name = prompt('과목명을 입력하세요');
             if (name && name.trim()) {
-              setNewSubject(name.trim());
-              addSubject();
+              addSubject(name.trim());
             }
           }}
         >
@@ -756,6 +762,24 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Subject Long Press Context Menu */}
+      {subjects.map(subject => (
+        <div
+          key={`context-${subject}`}
+          style={{
+            position: 'absolute',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setEditingSubject(subject);
+            setNewSubjectEditName(subject);
+            setSubjectModalVisible(true);
+          }}
+        />
+      ))}
 
       {/* Edit Modal */}
       {editModalVisible && editingItem && (
