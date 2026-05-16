@@ -223,12 +223,6 @@ function App() {
     return results.sort((a, b) => b.score - a.score);
   };
 
-  const openSubjectModal = (subject) => {
-    setEditingSubject(subject);
-    setNewSubjectEditName(subject);
-    setSubjectModalVisible(true);
-  };
-
   const renameSubject = () => {
     if (!newSubjectEditName.trim() || newSubjectEditName === editingSubject) {
       setSubjectModalVisible(false);
